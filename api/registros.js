@@ -1,25 +1,26 @@
 import { neon } from '@neondatabase/serverless';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { currentWorker, requireAdmin, team } from '../lib/equipe.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const hash = value => createHash('sha256').update(value).digest();
 const privateHeaders = {'Cache-Control':'private, no-store'};
 function fail(message, status=400) {
   throw new Response(message,{status,headers:privateHeaders});
 }
-function field(form,key,required=true) {
+function field(form,key,required=true,maxLength=180) {
   const value=form.get(key)??'';
-  if(typeof value!=='string'||value.length>180||(required&&!value.trim())) fail('Confira o campo '+key+'.');
+  if(typeof value!=='string'||value.length>maxLength||(required&&!value.trim())) fail('Confira o campo '+key+'.');
   return value.trim();
 }
 async function save(request,sql) {
   if(request.headers.get('origin')!==new URL(request.url).origin) fail('Origem inválida.',403);
+  const autor=await currentWorker(request,sql);
+  if(!autor)fail('Entre com sua conta de campo para enviar.',401);
   let form;
   try { form=await request.formData(); } catch { fail('Formulário inválido.'); }
   const id=field(form,'id');
   if(!uuid.test(id)) fail('Identificador inválido.');
-  const row={id,data:Date.now(),geo:null,tem:field(form,'tem')==='true'};
-  for(const key of ['nome','rua','numero','bairro']) row[key]=field(form,key);
+  const row={id,autor,observacao:field(form,'observacao',false,2000),data:Date.now(),geo:null,tem:field(form,'tem')==='true'};
+  for(const key of ['cidade','nome','rua','numero','bairro']) row[key]=field(form,key);
   row.serial=row.tem?field(form,'serial',false):'';
   if(form.has('geo')) {
     let g;try {g=JSON.parse(field(form,'geo'));} catch {fail('Localização inválida.');}
@@ -46,10 +47,11 @@ export default {async fetch(request) {
   try {
     if(!process.env.DATABASE_URL||!process.env.ADMIN_PASSWORD) fail('A central ainda precisa ser configurada.',503);
     const sql=neon(process.env.DATABASE_URL);
+    const action=new URL(request.url).searchParams.get('equipe');
+    if(action)return await team(request,sql,action);
     if(request.method==='POST') return await save(request,sql);
     if(request.method!=='GET') fail('Método inválido.',405);
-    const auth=request.headers.get('authorization')||'';
-    if(!timingSafeEqual(hash(auth),hash('Bearer '+process.env.ADMIN_PASSWORD))) fail('Senha administrativa inválida.',401);
+    requireAdmin(request);
     const query=new URL(request.url).searchParams;
     if(query.has('foto')) {
       const id=query.get('id'), key=query.get('foto');

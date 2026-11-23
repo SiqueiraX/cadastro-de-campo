@@ -31,11 +31,11 @@ async function workbook(rows){
     ['[Content_Types].xml','<Types xmlns="'+ns+'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'],
     ['_rels/.rels',links('officeDocument','xl/workbook.xml')],['xl/_rels/workbook.xml.rels',links('worksheet','worksheets/sheet1.xml')],
     ['xl/workbook.xml','<workbook xmlns="'+ss+'" xmlns:r="'+rel+'"><sheets><sheet name="Empreendimentos" sheetId="1" r:id="rId1"/></sheets></workbook>'],
-    ['xl/worksheets/sheet1.xml','<worksheet xmlns="'+ss+'"><cols><col min="1" max="13" width="23" customWidth="1"/></cols><sheetData>'+data+'</sheetData><autoFilter ref="A1:M'+rows.length+'"/></worksheet>']
+    ['xl/worksheets/sheet1.xml','<worksheet xmlns="'+ss+'"><cols><col min="1" max="17" width="23" customWidth="1"/></cols><sheetData>'+data+'</sheetData><autoFilter ref="A1:Q'+rows.length+'"/></worksheet>']
   ]);
 }
 async function exportRecords(items){
-  const rows=[['ID','Data e hora local','Empreendimento','Rua','Número','Bairro','Latitude','Longitude','Precisão (m)','Tem medidor?','Número do medidor','Foto da fachada','Foto do medidor']],files=[];
+  const rows=[['ID','Data e hora local','Responsável','Usuário','Cidade','Empreendimento','Rua','Número','Bairro','Latitude','Longitude','Precisão (m)','Tem medidor?','Número do medidor','Foto da fachada','Foto do medidor','Observação']],files=[];
   for(const r of items){
     const paths=['fachada','medidor'].map(k=>{
       if(!r[k])return '';
@@ -44,7 +44,7 @@ async function exportRecords(items){
       const path='fotos/'+r.id+'-'+name+'/'+k+'.'+ext;
       files.push([path,r[k]]);return path;
     });
-    rows.push([r.id,new Date(r.data).toLocaleString('pt-BR'),r.nome,r.rua,r.numero,r.bairro,r.geo?.lat,r.geo?.lon,r.geo?.acc,r.tem?'Sim':'Não',r.serial,...paths]);
+    rows.push([r.id,new Date(r.data).toLocaleString('pt-BR'),r.autor?.nome||'Sem identificação',r.autor?.usuario,r.cidade,r.nome,r.rua,r.numero,r.bairro,r.geo?.lat,r.geo?.lon,r.geo?.acc,r.tem?'Sim':'Não',r.serial,...paths,r.observacao]);
   }
   return zip([['empreendimentos.xlsx',await workbook(rows)],...files]);
 }

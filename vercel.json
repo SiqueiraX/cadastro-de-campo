@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "outputDirectory": "public",
+  "buildCommand": "npm run build",
+  "rewrites": [{"source": "/admin", "destination": "/index.html"}]
+}

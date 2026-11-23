@@ -1,0 +1,8 @@
+{
+  "name": "cadastro-de-campo",
+  "private": true,
+  "type": "module",
+  "engines": {"node": "22.x"},
+  "scripts": {"build": "node setup.mjs"},
+  "dependencies": {"@neondatabase/serverless": "1.0.2"}
+}

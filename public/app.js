@@ -15,6 +15,7 @@ function renderAccess(){
  $('workerLogin').hidden=admin||!!worker;
  form.hidden=admin||!worker;
  $('identity').hidden=admin||!worker;
+ showVisitMap(admin?!!adminPassword&&!$('teamPanel').hidden:!!worker);
  $('person').textContent=worker?'Responsável: '+worker.nome+' (@'+worker.usuario+')':'';
 }
 async function account(action,body,admin=false){
@@ -29,7 +30,7 @@ $('workerLogin').onsubmit=async event=>{
  try{const result=await account('entrar',Object.fromEntries(new FormData(login)));worker=result.pessoa;login.reset();view(false)}catch(err){report(err)}
 };
 $('logout').onclick=async()=>{
- try{await account('sair',{});worker=null;form.reset();geo=null;++gpsToken;$('gps').disabled=false;$('coords').textContent='Use a posição atual do celular.';$('meter').hidden=true;photo(f.fachada);photo(f.medidor);submissionId=crypto.randomUUID();view(false)}catch(err){report(err)}
+ try{await account('sair',{});worker=null;clearPlace();form.reset();geo=null;++gpsToken;$('gps').disabled=false;$('coords').textContent='Use a posição atual do celular.';$('meter').hidden=true;photo(f.fachada);photo(f.medidor);submissionId=crypto.randomUUID();view(false)}catch(err){report(err)}
 };
 $('addWorker').onsubmit=async event=>{
  event.preventDefault();const create=event.currentTarget;
@@ -42,13 +43,13 @@ function view(list){
 }
 let adminPassword='';
 const adminFetch=url=>fetch(url,{headers:{Authorization:'Bearer '+adminPassword},cache:'no-store'});
-async function refresh(){const result=[];let cursor='';do{const response=await adminFetch('/api/registros?cursor='+encodeURIComponent(cursor));if(response.status===401){adminPassword='';$('teamPanel').hidden=true;$('rows').replaceChildren();items=[];$('export').disabled=true;$('login').hidden=false;throw Error('Informe a senha administrativa.');}if(!response.ok)throw Error(response.status===403?'Acesso exclusivo do administrador.':'Falha ao carregar os cadastros.');const page=await response.json();result.push(...page.rows);cursor=page.cursor}while(cursor);items=result;$('count').textContent=items.length;$('export').disabled=!items.length;
+async function refresh(){const result=[];let cursor='';do{const response=await adminFetch('/api/registros?cursor='+encodeURIComponent(cursor));if(response.status===401){adminPassword='';$('teamPanel').hidden=true;showVisitMap(false);$('rows').replaceChildren();items=[];$('export').disabled=true;$('login').hidden=false;throw Error('Informe a senha administrativa.');}if(!response.ok)throw Error(response.status===403?'Acesso exclusivo do administrador.':'Falha ao carregar os cadastros.');const page=await response.json();result.push(...page.rows);cursor=page.cursor}while(cursor);items=result;$('count').textContent=items.length;$('export').disabled=!items.length;
  const select=$('responsavel'),previous=select.value;
  const people=new Map(items.map(r=>[r.autor?.usuario||'__legacy__',r.autor?r.autor.nome+' (@'+r.autor.usuario+')':'Sem identificação']));
  select.replaceChildren(new Option('Toda a equipe',''));
  for(const [id,name] of people)select.add(new Option(name,id));
  if(people.has(previous))select.value=previous;
- $('teamPanel').hidden=false;renderRows();
+ $('teamPanel').hidden=false;showVisitMap(true);renderRows();
 }
 function visibleRows(){const selected=$('responsavel').value;return items.filter(r=>!selected||(r.autor?.usuario||'__legacy__')===selected).sort((a,b)=>b.data-a.data)}
 function renderRows(){
@@ -96,7 +97,7 @@ form.onsubmit=async e=>{e.preventDefault();if(busy)return;
  for(const key of ['cidade','nome','rua','numero','bairro']){f[key].value=f[key].value.trim();if(!f[key].reportValidity())return}
  if($('gps').disabled){$('coords').scrollIntoView({block:'center'});$('status').textContent='Aguarde a captura da localização.';return}
  busy=true;form.inert=true;$('save').disabled=true;try{const r={observacao:f.observacao.value.trim(),data:Date.now(),geo,tem:f.tem.checked,serial:f.tem.checked?f.serial.value.trim():'',fachada:f.fachada.files[0]||null,medidor:f.tem.checked?(f.medidor.files[0]||null):null};for(const k of ['cidade','nome','rua','numero','bairro'])r[k]=f[k].value;
- const payload=new FormData();for(const [k,v] of Object.entries(r)){if(v instanceof File)payload.append(k,await preparePhoto(v));else if(v!==null)payload.append(k,typeof v==='object'?JSON.stringify(v):String(v))}payload.set('id',submissionId);
- form.inert=true;$('status').textContent='Enviando cadastro…';const response=await fetch('/api/registros',{method:'POST',body:payload});if(response.status===401){worker=null;renderAccess()}if(!response.ok)throw Error(await response.text());submissionId=crypto.randomUUID();form.reset();geo=null;++gpsToken;$('meter').hidden=true;$('coords').textContent='Use a posição atual do celular.';photo(f.fachada);photo(f.medidor);view(false);$('status').textContent='Cadastro recebido na central. Você já pode registrar outro empreendimento.';
+ const payload=new FormData();for(const [k,v] of Object.entries(r)){if(v instanceof File)payload.append(k,await preparePhoto(v));else if(v!==null)payload.append(k,typeof v==='object'?JSON.stringify(v):String(v))}payload.set('id',submissionId);if(selectedPlace)payload.set('local_id',selectedPlace);
+ form.inert=true;$('status').textContent='Enviando cadastro…';const response=await fetch('/api/registros',{method:'POST',body:payload});if(response.status===401){worker=null;renderAccess()}if(!response.ok)throw Error(await response.text());submissionId=crypto.randomUUID();form.reset();clearPlace();geo=null;++gpsToken;$('meter').hidden=true;$('coords').textContent='Use a posição atual do celular.';photo(f.fachada);photo(f.medidor);view(false);loadPlaces();$('status').textContent='Cadastro recebido na central. Você já pode registrar outro empreendimento.';
  }catch(err){report(err)}finally{form.inert=false;busy=false;$('save').disabled=false}};
 $('export').onclick=async()=>{if(!items.length)return;$('export').disabled=true;$('status').textContent='Preparando a planilha e as fotos…';try{await refresh();const batch=[];for(const row of visibleRows()){const record={...row};for(const key of ['fachada','medidor']){if(!record[key])continue;const res=await adminFetch('/api/registros?id='+record.id+'&foto='+key);if(!res.ok)throw Error();record[key]=new File([await res.blob()],key+'.'+record[key].ext)}batch.push(record)}const file=await exportRecords(batch);const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download='levantamento-'+new Date().toISOString().slice(0,10)+'.zip';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),120000);$('status').textContent='Arquivo preparado para download.'}catch{$('status').textContent='Falha ao exportar. Tente novamente.'}finally{$('export').disabled=false}};

@@ -13,3 +13,10 @@ await sql`CREATE TABLE IF NOT EXISTS campo_sessoes (
   token_hash text PRIMARY KEY, usuario text NOT NULL REFERENCES campo_equipe(usuario),
   validade timestamptz NOT NULL
 )`;
+await sql`CREATE UNIQUE INDEX IF NOT EXISTS campo_registros_local_unico
+  ON campo_registros ((dados->>'local_id')) WHERE dados->>'local_id' IS NOT NULL`;
+const {copyFile,mkdir}=await import('node:fs/promises');
+await mkdir('public/vendor',{recursive:true});
+for(const extension of ['js','css']){
+  await copyFile('node_modules/maplibre-gl/dist/maplibre-gl.'+extension,'public/vendor/maplibre-gl.'+extension);
+}

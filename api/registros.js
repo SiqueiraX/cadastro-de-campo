@@ -1,3 +1,4 @@
+import { previstos, pontosDeVistoria } from '../lib/vistorias.js';
 import { neon } from '@neondatabase/serverless';
 import { currentWorker, requireAdmin, team } from '../lib/equipe.js';
 
@@ -21,6 +22,11 @@ async function save(request,sql) {
   if(!uuid.test(id)) fail('Identificador inválido.');
   const row={id,autor,observacao:field(form,'observacao',false,2000),data:Date.now(),geo:null,tem:field(form,'tem')==='true'};
   for(const key of ['cidade','nome','rua','numero','bairro']) row[key]=field(form,key);
+  const localId=field(form,'local_id',false);
+  if(localId){
+    if(!previstos.some(local=>local.id===localId))fail('Local fora da lista de vistorias.');
+    row.local_id=localId;
+  }
   row.serial=row.tem?field(form,'serial',false):'';
   if(form.has('geo')) {
     let g;try {g=JSON.parse(field(form,'geo'));} catch {fail('Localização inválida.');}
@@ -38,9 +44,12 @@ async function save(request,sql) {
     photos[key]=Buffer.from(await file.arrayBuffer()).toString('base64');
     row[key]={ext};
   }
-  await sql`INSERT INTO campo_registros (id,dados,fachada,medidor)
+  try {await sql`INSERT INTO campo_registros (id,dados,fachada,medidor)
     VALUES (${id},${JSON.stringify(row)}::jsonb,decode(${photos.fachada},'base64'),decode(${photos.medidor},'base64'))
-    ON CONFLICT (id) DO NOTHING`;
+    ON CONFLICT (id) DO NOTHING`;}catch(err){
+    if(err.code==='23505'&&localId)fail('Este local já foi vistoriado. Atualize o mapa.',409);
+    throw err;
+  }
   return Response.json({id},{headers:privateHeaders});
 }
 export default {async fetch(request) {
@@ -48,6 +57,14 @@ export default {async fetch(request) {
     if(!process.env.DATABASE_URL||!process.env.ADMIN_PASSWORD) fail('A central ainda precisa ser configurada.',503);
     const sql=neon(process.env.DATABASE_URL);
     const action=new URL(request.url).searchParams.get('equipe');
+    if(new URL(request.url).searchParams.has('mapa')){
+      if(request.method!=='GET')fail('Método inválido.',405);
+      if(!(await currentWorker(request,sql)))requireAdmin(request);
+      const registros=await sql`SELECT id,dados->>'local_id' AS local_id,dados->>'nome' AS nome,
+        dados->>'cidade' AS cidade,dados->>'rua' AS rua,dados->>'numero' AS numero,
+        dados->>'bairro' AS bairro,dados->'geo' AS geo FROM campo_registros`;
+      return Response.json(pontosDeVistoria(registros),{headers:privateHeaders});
+    }
     if(action)return await team(request,sql,action);
     if(request.method==='POST') return await save(request,sql);
     if(request.method!=='GET') fail('Método inválido.',405);

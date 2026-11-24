@@ -31,20 +31,23 @@ async function workbook(rows){
     ['[Content_Types].xml','<Types xmlns="'+ns+'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'],
     ['_rels/.rels',links('officeDocument','xl/workbook.xml')],['xl/_rels/workbook.xml.rels',links('worksheet','worksheets/sheet1.xml')],
     ['xl/workbook.xml','<workbook xmlns="'+ss+'" xmlns:r="'+rel+'"><sheets><sheet name="Empreendimentos" sheetId="1" r:id="rId1"/></sheets></workbook>'],
-    ['xl/worksheets/sheet1.xml','<worksheet xmlns="'+ss+'"><cols><col min="1" max="17" width="23" customWidth="1"/></cols><sheetData>'+data+'</sheetData><autoFilter ref="A1:Q'+rows.length+'"/></worksheet>']
+    ['xl/worksheets/sheet1.xml','<worksheet xmlns="'+ss+'"><cols><col min="1" max="23" width="23" customWidth="1"/></cols><sheetData>'+data+'</sheetData><autoFilter ref="A1:W'+rows.length+'"/></worksheet>']
   ]);
 }
 async function exportRecords(items){
-  const rows=[['ID','Data e hora local','Responsável','Usuário','Cidade','Empreendimento','Rua','Número','Bairro','Latitude','Longitude','Precisão (m)','Tem medidor?','Número do medidor','Foto da fachada','Foto do medidor','Observação']],files=[];
+  const rows=[['ID','Data e hora local','Responsável','Usuário','Cidade','Empreendimento','Rua','Número','Bairro','Latitude','Longitude','Precisão (m)','Tem medidor?','Números dos HDs','Fotos da fachada','Fotos dos HDs','Observação','Fonte alternativa','Fotos da fonte','Reservação','Funcionários','Média de clientes','Reagente']],files=[];
   for(const r of items){
-    const paths=['fachada','medidor'].map(k=>{
-      if(!r[k])return '';
-      const ext=r[k].name.match(/\.([a-z0-9]{1,8})$/i)?.[1]||'img';
-      const name=r.nome.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9_-]+/gi,'-').slice(0,50);
-      const path='fotos/'+r.id+'-'+name+'/'+k+'.'+ext;
-      files.push([path,r[k]]);return path;
-    });
-    rows.push([r.id,new Date(r.data).toLocaleString('pt-BR'),r.autor?.nome||'Sem identificação',r.autor?.usuario,r.cidade,r.nome,r.rua,r.numero,r.bairro,r.geo?.lat,r.geo?.lon,r.geo?.acc,r.tem?'Sim':'Não',r.serial,...paths,r.observacao]);
+    const name=r.nome.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9_-]+/gi,'-').slice(0,50);
+    const groups={fachada:[],hd:[],fonte:[]},sequence={};
+    for(const p of gallery(r)){
+      const blob=await getImage(r.id,p.id,false,true);
+      const ext=blob.type.split('/').pop().replace('jpeg','jpg').replace(/[^a-z0-9]/gi,'')||'img';
+      sequence[p.group]=(sequence[p.group]||0)+1;
+      const path='fotos/'+r.id+'-'+name+'/'+p.group+'-'+sequence[p.group]+'.'+ext;
+      files.push([path,blob]);groups[p.group.startsWith('hd-')?'hd':p.group].push(path);
+    }
+    const yesNo=v=>v==null?'':v?'Sim':'Não';
+    rows.push([r.id,new Date(r.data).toLocaleString('pt-BR'),r.autor?.nome||'Sem identificação',r.autor?.usuario,r.cidade,r.nome,r.rua,r.numero,r.bairro,r.geo?.lat,r.geo?.lon,r.geo?.acc,yesNo(r.tem),stored(r).hds.map((h,i)=>'HD '+(i+1)+': '+(h.numero||'sem número')).join(' | '),groups.fachada.join(' | '),groups.hd.join(' | '),r.observacao,yesNo(r.fonte),groups.fonte.join(' | '),r.reservacao,r.funcionarios,r.clientes,yesNo(r.reagente)]);
   }
   return zip([['empreendimentos.xlsx',await workbook(rows)],...files]);
 }

@@ -8,15 +8,12 @@ function clearPlace(){
   selectedPlace=null;
   document.getElementById('chosenPlace').hidden=true;
 }
-document.getElementById('detachPlace').onclick=()=>{clearPlace();submissionId=crypto.randomUUID()};
+document.getElementById('detachPlace').onclick=()=>{if(busy)return;for(const key of ['cidade','nome','rua','numero','bairro'])f[key].value='';clearPlace();clearGPS();f.cidade.focus()};
 function choosePlace(point){
   if(busy)return;
   const fields=['cidade','nome','rua','numero','bairro'];
-  if((fields.some(k=>f[k].value)||f.observacao.value||geo||f.fachada.files.length||f.tem.checked||f.medidor.files.length)&&
-    !confirm('Substituir o rascunho atual pela vistoria deste local?'))return;
-  form.reset();geo=null;++gpsToken;$('gps').disabled=false;
-  $('coords').textContent='Use a posição atual do celular.';$('meter').hidden=true;
-  photo(f.fachada);photo(f.medidor);
+  if(hasDraft()&&!confirm('Substituir o rascunho atual pela vistoria deste local?'))return;
+  resetFicha();closePinPanel();
   for(const key of fields)f[key].value=point[key]||'';
   selectedPlace=point.id;submissionId=crypto.randomUUID();
   $('chosenName').textContent='Vistoria de '+point.nome;$('chosenPlace').hidden=false;
@@ -70,7 +67,13 @@ function brandStyle(_,style){
   });
   return {...style,layers};
 }
-function clearMarkers(){for(const marker of markers)marker.remove();markers=[]}
+function closePinPanel(){document.getElementById('pinPanel')?.remove()}
+function showPinPanel(point){
+  closePinPanel();const panel=document.createElement('div');panel.id='pinPanel';panel.setAttribute('role','region');panel.setAttribute('aria-label','Detalhes do local');
+  const close=document.createElement('button');close.type='button';close.className='pin-close';close.textContent='Fechar';close.onclick=closePinPanel;
+  panel.append(close,detailsFor(point));mapElement.append(panel);close.focus({preventScroll:true});
+}
+function clearMarkers(){closePinPanel();for(const marker of markers)marker.remove();markers=[]}
 function paintPoints(lib,points){
   if(!mapView){
     mapView=new lib.Map({container:mapElement,center:[-55.503,-11.86],zoom:11,attributionControl:true});
@@ -85,7 +88,8 @@ function paintPoints(lib,points){
     const button=document.createElement('button');button.type='button';button.className='visit-pin'+(done?' done':'');
     button.textContent=done?'✓':'◷';button.setAttribute('aria-label',point.nome+' · '+(done?'Concluída':'Pendente'));
     const marker=new lib.Marker({element:button,anchor:'bottom'}).setLngLat(pos)
-      .setPopup(new lib.Popup({offset:25,maxWidth:'275px'}).setDOMContent(detailsFor(point))).addTo(mapView);
+      .addTo(mapView);
+    button.onclick=()=>showPinPanel(point);
     markers.push(marker);bounds.extend(pos);
   }
   if(!fitted&&markers.length){mapView.fitBounds(bounds,{padding:55,maxZoom:16,duration:0});fitted=true}
